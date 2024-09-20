@@ -1,0 +1,5 @@
+# File: requirements.txt
+
+numpy
+opencv-python
+tqdm
