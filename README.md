@@ -1,61 +1,178 @@
 # DataPalette
 
-DataPalette is a comprehensive toolkit for creating, preprocessing, and augmenting image datasets for various deep learning tasks.
+Image dataset preprocessing and augmentation toolkit with sklearn-compatible transforms.
 
-## Project Structure
+DataPalette provides a library of composable image transforms that plug directly
+into scikit-learn `Pipeline` objects, plus task-specific pipelines for GANs,
+segmentation, and diffusion models.
 
-```
-DataPalette/
-│
-├── datapalette/
-│   ├── core/
-│   │   ├── __init__.py
-│   │   └── functions.py
-│   ├── preprocessing/
-│   │   ├── __init__.py
-│   │   └── advanced.py
-│   ├── augmentation/
-│   │   ├── __init__.py
-│   │   └── basic.py
-│   ├── pipelines/
-│   │   ├── __init__.py
-│   │   └── predefined.py
-│   ├── utils/
-│   │   ├── __init__.py
-│   │   └── helpers.py
-│   └── __init__.py
-│
-├── main.py
-├── setup.py
-└── README.md
-```
+---
 
 ## Installation
 
-To install DataPalette, run:
-
-```
-pip install -e .
+```bash
+pip install datapalette
 ```
 
-## Usage
+With PyTorch/torchvision support (required for built-in datasets and the
+`DataPaletteDataset` adapter):
 
-Run the main script with desired options:
-
-```
-python main.py input_path output_directory --pipeline [gan|unet|diffusion|custom] [options]
+```bash
+pip install datapalette[torch]
 ```
 
-For more information, run:
+For development (testing, linting, type checking):
 
+```bash
+pip install datapalette[dev]
 ```
-python main.py --help
+
+---
+
+## Quick Start
+
+Every transform is an sklearn-compatible estimator, so you can compose them
+with `sklearn.pipeline.Pipeline`:
+
+```python
+from sklearn.pipeline import Pipeline
+from datapalette import Rotate, GaussianNoise
+
+pipe = Pipeline([
+    ("rotate", Rotate(angle=15)),
+    ("noise", GaussianNoise(amount=0.03)),
+])
+
+import cv2
+
+image = cv2.imread("photo.jpg")
+augmented = pipe.transform(image)
+cv2.imwrite("augmented.jpg", augmented)
 ```
+
+---
+
+## Built-in Datasets
+
+DataPalette ships convenience loaders for MNIST and Fashion-MNIST that return
+plain NumPy arrays (requires the `[torch]` extra):
+
+```python
+from datapalette.datasets import load_mnist, load_fashion_mnist
+
+images, labels = load_mnist(train=True)       # (60000, 28, 28, 1) uint8
+images, labels = load_fashion_mnist(train=True)
+```
+
+---
+
+## Task Pipelines
+
+Pre-configured pipelines bundle common transforms for specific deep-learning
+tasks and return `(X, y)` pairs ready for training.
+
+### GANPipeline
+
+```python
+from datapalette import GANPipeline
+
+pipe = GANPipeline(dataset="mnist", size=(64, 64))
+X, _ = pipe.load_and_transform()
+```
+
+### SegmentationPipeline
+
+```python
+from datapalette import SegmentationPipeline
+
+pipe = SegmentationPipeline(dataset=None, mode="binary")
+X, y = pipe.load_and_transform(images_dir="images/", masks_dir="masks/")
+```
+
+### DiffusionPipeline
+
+```python
+from datapalette import DiffusionPipeline
+
+pipe = DiffusionPipeline(dataset="fashion_mnist", size=(64, 64))
+X, _ = pipe.load_and_transform()
+```
+
+---
+
+## PyTorch Adapter
+
+`DataPaletteDataset` wraps any pipeline into a lazy-loading PyTorch `Dataset`:
+
+```python
+from datapalette.adapters.torch import DataPaletteDataset
+from datapalette import GANPipeline
+from torch.utils.data import DataLoader
+
+pipe = GANPipeline(dataset=None, size=(256, 256))
+ds = DataPaletteDataset("images/", pipeline=pipe)
+loader = DataLoader(ds, batch_size=16, shuffle=True)
+
+for images, labels in loader:
+    ...  # images: (B, C, H, W) float32 tensors
+```
+
+---
+
+## CLI Usage
+
+DataPalette includes a command-line interface for batch processing:
+
+```bash
+# Run the GAN pipeline on a directory of images
+datapalette --pipeline gan --input-type images --input ./data --output_dir ./results
+
+# Apply custom transforms to a single image
+datapalette --pipeline custom --input-type single_image --input photo.jpg \
+    --rotate --rotate-angles 15 --noise --noise-type gaussian --noise-amount 0.05
+
+# Extract frames from video and run diffusion preprocessing
+datapalette --pipeline diffusion --input-type video --input clip.mp4 --fps 5
+
+# Showcase mode: save every intermediate step
+datapalette --pipeline showcase --input-type single_image --input photo.jpg \
+    --rotate --mirror --brightness-contrast --output_dir ./showcase
+```
+
+---
+
+## Transforms
+
+| Class | Module | Parameters |
+|---|---|---|
+| `Rotate` | `spatial` | `angle: float = 90.0` |
+| `Mirror` | `spatial` | `mode: str = "horizontal"` (`horizontal`, `vertical`, `both`) |
+| `RandomCrop` | `spatial` | `crop_size: tuple[int, int] = (224, 224)` |
+| `Tile` | `spatial` | `tile_size: tuple[int, int] = (256, 256)`, `overlap: float = 0.0` |
+| `Resize` | `spatial` | `size: tuple[int, int] = (256, 256)` |
+| `PCAColorAugmentation` | `color` | `alpha_std: float = 0.1` |
+| `ConvertColorSpace` | `color` | `target: str = "hsv"` (`hsv`, `lab`, `gray`) |
+| `EnhanceGreen` | `color` | *(none)* |
+| `Multispectral` | `color` | *(none)* |
+| `GaussianNoise` | `noise` | `amount: float = 0.05` |
+| `SaltPepperNoise` | `noise` | `amount: float = 0.05`, `salt_ratio: float = 0.5` |
+| `BrightnessContrast` | `noise` | `brightness_range: tuple = (0.5, 1.5)`, `contrast_range: tuple = (0.5, 1.5)` |
+| `FourierTransform` | `frequency` | *(none)* |
+| `GradientChannels` | `edges` | *(none)* |
+| `EdgeChannels` | `edges` | `low_threshold: int = 100`, `high_threshold: int = 200` |
+| `Emboss` | `filters` | *(none)* |
+| `Sharpen` | `filters` | *(none)* |
+| `CustomKernel` | `filters` | `kernel: np.ndarray` |
+
+---
 
 ## Contributing
 
-(Add contribution guidelines here)
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, testing, and PR
+guidelines.
+
+---
 
 ## License
 
-(Add license information here)
+MIT -- see [LICENSE](LICENSE) for details.

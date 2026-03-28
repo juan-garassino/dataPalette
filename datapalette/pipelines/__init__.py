@@ -1,5 +1,13 @@
-# File: datapalette/pipelines/__init__.py
+from __future__ import annotations
 
-from .predefined import gan_pipeline, unet_segmentation_pipeline, diffusion_model_pipeline, custom_pipeline
+from datapalette.pipelines.base import TaskPipeline
+from datapalette.pipelines.diffusion import DiffusionPipeline
+from datapalette.pipelines.gan import GANPipeline
+from datapalette.pipelines.segmentation import SegmentationPipeline
 
-__all__ = ['gan_pipeline', 'unet_segmentation_pipeline', 'diffusion_model_pipeline', 'custom_pipeline']
+__all__ = [
+    "TaskPipeline",
+    "GANPipeline",
+    "SegmentationPipeline",
+    "DiffusionPipeline",
+]
